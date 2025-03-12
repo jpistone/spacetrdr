@@ -56,6 +56,12 @@ class SpaceGame {
     // Reference vectors
     this.worldUp = new THREE.Vector3(0, 1, 0);
 
+    // Game boundaries
+    this.gameBoundaryRadius = 2000; // Maximum distance from origin
+    this.boundaryWarningDistance = 200; // Distance from boundary to show warning
+    this.boundaryForce = 0.05; // Force pushing player back when hitting boundary
+    this.isNearBoundary = false;
+
     // Initialize UI elements
     this.initializeUI();
 
@@ -171,11 +177,11 @@ class SpaceGame {
       // Vary the distance to create layers of stars
       let distance;
       if (Math.random() < 0.7) {
-        // 70% of stars are closer
-        distance = 3000 + Math.random() * 3000;
+        // 70% of stars are closer but still within game boundary
+        distance = Math.random() * this.gameBoundaryRadius * 0.9;
       } else {
-        // 30% of stars are very distant (near the galaxies)
-        distance = 6000 + Math.random() * 3000;
+        // 30% of stars are very distant (beyond game boundary)
+        distance = this.gameBoundaryRadius * (1.5 + Math.random() * 1.5);
       }
 
       const x = distance * Math.sin(phi) * Math.cos(theta);
@@ -555,12 +561,13 @@ class SpaceGame {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Keyboard controls for thrusters
+    // Keyboard controls for thrusters and warp
     document.addEventListener("keydown", (event) => {
       if (event.key.toLowerCase() === "w") this.keys.w = true;
       if (event.key.toLowerCase() === "a") this.keys.a = true;
       if (event.key.toLowerCase() === "s") this.keys.s = true;
       if (event.key.toLowerCase() === "d") this.keys.d = true;
+      if (event.key === " ") this.keys.space = true;
 
       // Toggle UI with H key
       if (event.key.toLowerCase() === "h") {
@@ -574,6 +581,7 @@ class SpaceGame {
       if (event.key.toLowerCase() === "a") this.keys.a = false;
       if (event.key.toLowerCase() === "s") this.keys.s = false;
       if (event.key.toLowerCase() === "d") this.keys.d = false;
+      if (event.key === " ") this.keys.space = false;
     });
   }
 
@@ -700,6 +708,9 @@ class SpaceGame {
       this.velocity.normalize().multiplyScalar(currentMaxSpeed);
     }
 
+    // Apply boundary constraints before updating position
+    this.applyBoundaryConstraints();
+
     // Update position based on velocity
     this.shipContainer.position.add(this.velocity);
 
@@ -729,6 +740,9 @@ class SpaceGame {
         z: this.velocity.z,
       },
     });
+
+    // Update speed display
+    this.updateSpeedDisplay();
   }
 
   updateWarpDrive(deltaTime) {
@@ -786,10 +800,10 @@ class SpaceGame {
   createDistantGalaxies() {
     const textureLoader = new THREE.TextureLoader();
 
-    // Create 20 distant galaxies
+    // Create 20 distant galaxies - position them well beyond the game boundary
     for (let i = 0; i < 20; i++) {
-      // Random position far away from the player
-      const distance = 6000 + Math.random() * 3000;
+      // Random position far away from the player (3-5x the game boundary)
+      const distance = this.gameBoundaryRadius * (3 + Math.random() * 2);
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
 
@@ -1072,13 +1086,269 @@ class SpaceGame {
     this.uiContainer.appendChild(footer);
 
     document.body.appendChild(this.uiContainer);
+
+    // Create speed and warp indicator
+    this.speedContainer = document.createElement("div");
+    this.speedContainer.id = "speed-container";
+    this.speedContainer.style.position = "absolute";
+    this.speedContainer.style.top = "20px";
+    this.speedContainer.style.right = "20px";
+    this.speedContainer.style.color = "#0ff";
+    this.speedContainer.style.fontFamily = "'Orbitron', sans-serif";
+    this.speedContainer.style.padding = "15px";
+    this.speedContainer.style.backgroundColor = "rgba(0, 20, 40, 0.7)";
+    this.speedContainer.style.borderRadius = "5px";
+    this.speedContainer.style.zIndex = "100";
+    this.speedContainer.style.boxShadow = "0 0 15px rgba(0, 255, 255, 0.5)";
+    this.speedContainer.style.border = "1px solid #0ff";
+    this.speedContainer.style.minWidth = "200px";
+    this.speedContainer.style.textAlign = "center";
+
+    // Speed title
+    const speedTitle = document.createElement("h3");
+    speedTitle.textContent = "NAVIGATION DATA";
+    speedTitle.style.margin = "0 0 10px 0";
+    speedTitle.style.textAlign = "center";
+    speedTitle.style.letterSpacing = "2px";
+    speedTitle.style.color = "#0ff";
+    speedTitle.style.textShadow = "0 0 5px #0ff";
+    this.speedContainer.appendChild(speedTitle);
+
+    // Divider
+    const speedDivider = document.createElement("div");
+    speedDivider.style.height = "2px";
+    speedDivider.style.background =
+      "linear-gradient(to right, transparent, #0ff, transparent)";
+    speedDivider.style.margin = "0 0 10px 0";
+    this.speedContainer.appendChild(speedDivider);
+
+    // Speed display
+    this.speedDisplay = document.createElement("div");
+    this.speedDisplay.style.fontSize = "24px";
+    this.speedDisplay.style.fontWeight = "bold";
+    this.speedDisplay.style.margin = "10px 0";
+    this.speedDisplay.style.textShadow = "0 0 5px #0ff";
+    this.speedContainer.appendChild(this.speedDisplay);
+
+    // Warp status
+    this.warpStatus = document.createElement("div");
+    this.warpStatus.style.fontSize = "18px";
+    this.warpStatus.style.margin = "5px 0";
+    this.warpStatus.style.fontWeight = "bold";
+    this.speedContainer.appendChild(this.warpStatus);
+
+    // Position display
+    this.positionDisplay = document.createElement("div");
+    this.positionDisplay.style.fontSize = "12px";
+    this.positionDisplay.style.margin = "10px 0 5px 0";
+    this.positionDisplay.style.color = "#8ff";
+    this.speedContainer.appendChild(this.positionDisplay);
+
+    // Warp energy bar
+    const warpEnergyContainer = document.createElement("div");
+    warpEnergyContainer.style.margin = "10px 0";
+    this.speedContainer.appendChild(warpEnergyContainer);
+
+    const warpLabel = document.createElement("div");
+    warpLabel.textContent = "WARP ENERGY";
+    warpLabel.style.fontSize = "12px";
+    warpLabel.style.marginBottom = "5px";
+    warpEnergyContainer.appendChild(warpLabel);
+
+    const warpBarContainer = document.createElement("div");
+    warpBarContainer.style.width = "100%";
+    warpBarContainer.style.height = "15px";
+    warpBarContainer.style.backgroundColor = "rgba(0, 40, 60, 0.5)";
+    warpBarContainer.style.borderRadius = "3px";
+    warpBarContainer.style.overflow = "hidden";
+    warpBarContainer.style.border = "1px solid #0aa";
+    warpEnergyContainer.appendChild(warpBarContainer);
+
+    this.warpEnergyBar = document.createElement("div");
+    this.warpEnergyBar.style.height = "100%";
+    this.warpEnergyBar.style.width = "100%";
+    this.warpEnergyBar.style.backgroundColor = "#0ff";
+    this.warpEnergyBar.style.transition = "width 0.2s, background-color 0.3s";
+    warpBarContainer.appendChild(this.warpEnergyBar);
+
+    // Warp key hint
+    const warpHint = document.createElement("div");
+    warpHint.textContent = "PRESS SPACE FOR WARP DRIVE";
+    warpHint.style.fontSize = "10px";
+    warpHint.style.marginTop = "5px";
+    warpHint.style.color = "#0aa";
+    warpEnergyContainer.appendChild(warpHint);
+
+    document.body.appendChild(this.speedContainer);
+
+    // Add boundary warning indicator
+    this.boundaryWarning = document.createElement("div");
+    this.boundaryWarning.style.fontSize = "16px";
+    this.boundaryWarning.style.fontWeight = "bold";
+    this.boundaryWarning.style.margin = "10px 0 5px 0";
+    this.boundaryWarning.style.color = "#ff3333";
+    this.boundaryWarning.style.display = "none";
+    this.boundaryWarning.textContent = "⚠️ BOUNDARY PROXIMITY WARNING ⚠️";
+    this.speedContainer.appendChild(this.boundaryWarning);
+  }
+
+  updateSpeedDisplay() {
+    if (
+      !this.speedDisplay ||
+      !this.warpStatus ||
+      !this.positionDisplay ||
+      !this.warpEnergyBar ||
+      !this.boundaryWarning
+    )
+      return;
+
+    // Calculate current speed
+    const speed = this.velocity.length();
+    const displaySpeed = Math.round(speed * 100) / 100;
+
+    // Update speed text
+    this.speedDisplay.textContent = `${displaySpeed} u/s`;
+
+    // Update warp status
+    if (this.warpActive) {
+      this.warpStatus.textContent = "WARP DRIVE ACTIVE";
+      this.warpStatus.style.color = "#ff9900";
+      this.speedDisplay.style.color = "#ff9900";
+    } else if (this.warpCooldown) {
+      this.warpStatus.textContent = "WARP DRIVE COOLING";
+      this.warpStatus.style.color = "#ff3333";
+      this.speedDisplay.style.color = "#0ff";
+    } else if (this.warpEnergy < this.maxWarpEnergy) {
+      this.warpStatus.textContent = "WARP DRIVE CHARGING";
+      this.warpStatus.style.color = "#ffff00";
+      this.speedDisplay.style.color = "#0ff";
+    } else {
+      this.warpStatus.textContent = "WARP DRIVE READY";
+      this.warpStatus.style.color = "#00ff00";
+      this.speedDisplay.style.color = "#0ff";
+    }
+
+    // Update position display
+    this.positionDisplay.textContent = `POS: X:${Math.round(
+      this.shipContainer.position.x
+    )} Y:${Math.round(this.shipContainer.position.y)} Z:${Math.round(
+      this.shipContainer.position.z
+    )}`;
+
+    // Update warp energy bar
+    this.warpEnergyBar.style.width = `${
+      (this.warpEnergy / this.maxWarpEnergy) * 100
+    }%`;
+
+    // Update bar color based on state
+    if (this.warpActive) {
+      this.warpEnergyBar.style.backgroundColor = "#ff9900";
+    } else if (this.warpCooldown) {
+      this.warpEnergyBar.style.backgroundColor = "#ff3333";
+    } else if (this.warpEnergy < this.maxWarpEnergy) {
+      this.warpEnergyBar.style.backgroundColor = "#ffff00";
+    } else {
+      this.warpEnergyBar.style.backgroundColor = "#00ff00";
+    }
+
+    // Update boundary warning
+    if (this.isNearBoundary) {
+      this.boundaryWarning.style.display = "block";
+
+      // Calculate distance to boundary as percentage
+      const distanceFromOrigin = this.shipContainer.position.length();
+      const distanceToBoundary = this.gameBoundaryRadius - distanceFromOrigin;
+      const boundaryProximity = Math.max(
+        0,
+        Math.min(100, (distanceToBoundary / this.boundaryWarningDistance) * 100)
+      );
+
+      // Make warning flash faster as player gets closer to boundary
+      const flashSpeed = 100 + (100 - boundaryProximity) * 9; // 100ms to 1000ms
+
+      // Create flashing effect
+      const now = Date.now();
+      if (Math.floor(now / flashSpeed) % 2 === 0) {
+        this.boundaryWarning.style.opacity = "1.0";
+      } else {
+        this.boundaryWarning.style.opacity = "0.5";
+      }
+
+      // Update warning text with distance
+      this.boundaryWarning.textContent = `⚠️ BOUNDARY PROXIMITY WARNING: ${Math.round(
+        distanceToBoundary
+      )} UNITS ⚠️`;
+    } else {
+      this.boundaryWarning.style.display = "none";
+    }
   }
 
   updateUIVisibility() {
     if (this.showUI) {
       this.uiContainer.style.display = "block";
+      this.speedContainer.style.display = "block";
     } else {
       this.uiContainer.style.display = "none";
+      this.speedContainer.style.display = "none";
+    }
+  }
+
+  applyBoundaryConstraints() {
+    // Calculate distance from origin
+    const distanceFromOrigin = this.shipContainer.position.length();
+
+    // Check if near or at boundary
+    if (
+      distanceFromOrigin >
+      this.gameBoundaryRadius - this.boundaryWarningDistance
+    ) {
+      // Player is approaching the boundary
+      this.isNearBoundary = true;
+
+      if (distanceFromOrigin > this.gameBoundaryRadius) {
+        // Player has hit the boundary, apply force pushing back toward center
+        const directionToCenter = new THREE.Vector3()
+          .copy(this.shipContainer.position)
+          .negate()
+          .normalize();
+
+        // Calculate repulsion force (stronger the further past boundary)
+        const overBoundaryAmount = distanceFromOrigin - this.gameBoundaryRadius;
+        const repulsionStrength =
+          this.boundaryForce * (1 + overBoundaryAmount * 0.1);
+
+        // Apply repulsion force to velocity
+        this.velocity.addScaledVector(directionToCenter, repulsionStrength);
+
+        // Dampen velocity component pointing away from center
+        const normalizedPosition = this.shipContainer.position
+          .clone()
+          .normalize();
+        const outwardVelocityComponent = this.velocity.dot(normalizedPosition);
+
+        if (outwardVelocityComponent > 0) {
+          // Subtract the outward component from velocity
+          const outwardVelocity = normalizedPosition.multiplyScalar(
+            outwardVelocityComponent
+          );
+          this.velocity.sub(outwardVelocity);
+
+          // Add slight inward velocity
+          this.velocity.addScaledVector(directionToCenter, 0.05);
+        }
+
+        // Ensure player can't go further out
+        if (distanceFromOrigin > this.gameBoundaryRadius * 1.05) {
+          // Hard limit - teleport slightly inside boundary if somehow got too far
+          const newPosition = this.shipContainer.position
+            .clone()
+            .normalize()
+            .multiplyScalar(this.gameBoundaryRadius * 0.95);
+          this.shipContainer.position.copy(newPosition);
+        }
+      }
+    } else {
+      this.isNearBoundary = false;
     }
   }
 }
