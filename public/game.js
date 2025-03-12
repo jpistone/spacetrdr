@@ -24,7 +24,7 @@ class SpaceGame {
 
     // Warp speed system
     this.warpActive = false;
-    this.warpSpeedMultiplier = 1000; // Set to exactly 1000x
+    this.warpSpeedMultiplier = 100000; // Set to exactly 1000x
     this.maxStamina = 100;
     this.currentStamina = 100;
     this.staminaRegenRate = 5; // Per second
@@ -45,14 +45,14 @@ class SpaceGame {
     // Galaxy parameters
     this.galaxyParams = {
       starsCount: 15000,
-      galaxyRadius: 100000, // 100x larger (was 1000)
-      galaxyThickness: 5000, // 100x larger (was 50)
+      galaxyRadius: 1000000, // 100x larger (was 1000)
+      galaxyThickness: 50000, // 100x larger (was 50)
       spiralArms: 5,
       spiralTightness: 0.7,
-      nebulaCount: 200, // 10x more nebulae for the larger space
+      nebulaCount: 2000, // 10x more nebulae for the larger space
       nebulaSize: 10000, // 100x larger (was 100)
-      dustLaneCount: 20000, // 10x more dust lanes
-      dustLaneSize: 50, // 100x larger (was 0.5)
+      dustLaneCount: 200, // 10x more dust lanes
+      dustLaneSize: 500, // 100x larger (was 0.5)
     };
 
     // Reference vectors
@@ -73,7 +73,7 @@ class SpaceGame {
       75,
       window.innerWidth / window.innerHeight,
       0.1,
-      10000000 // 1000x larger (was 10000) to see very distant objects
+      1000000000000000 // 1000x larger (was 10000) to see very distant objects
     );
 
     // Create renderer
@@ -132,7 +132,7 @@ class SpaceGame {
     const starsGeometry = new THREE.BufferGeometry();
     const starsMaterial = new THREE.PointsMaterial({
       color: 0xffffff,
-      size: 10, // 100x larger (was 0.1)
+      size: 0.1, // 100x larger (was 0.1)
       transparent: true,
       opacity: 0.8,
       sizeAttenuation: false,
@@ -156,7 +156,7 @@ class SpaceGame {
       const phi = Math.acos(2 * Math.random() - 1);
 
       // All stars are now positioned beyond the galaxy
-      const distance = 1000000 + Math.random() * 3000000; // 100x larger
+      const distance = 10000000000 + Math.random() * 3000000000; // 100x larger
 
       const x = distance * Math.sin(phi) * Math.cos(theta);
       const y = distance * Math.sin(phi) * Math.sin(theta);
@@ -186,10 +186,10 @@ class SpaceGame {
 
   createDistantGalaxies() {
     // Create several distant galaxies
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 3000; i++) {
       // More galaxies
       // Random position far away from the player
-      const distance = 2000000 + Math.random() * 3000000; // 100x larger
+      const distance = 10000000000 + Math.random() * 3000000; // 100x larger
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
 
@@ -210,7 +210,7 @@ class SpaceGame {
       galaxyContainer.rotation.z = Math.random() * Math.PI * 2;
 
       // Galaxy size
-      const galaxySize = 100000 + Math.random() * 200000; // 100x larger
+      const galaxySize = Math.min(6000000, Math.random() * 100000000); // 100x larger
 
       // Create galaxy based on type
       if (galaxyType === 0) {
@@ -425,7 +425,7 @@ class SpaceGame {
     const coreMaterial = new THREE.MeshBasicMaterial({
       color: 0xffffcc,
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.1,
     });
     const core = new THREE.Mesh(coreGeometry, coreMaterial);
     this.scene.add(core);
@@ -435,7 +435,7 @@ class SpaceGame {
     const glowMaterial = new THREE.MeshBasicMaterial({
       color: 0xffffaa,
       transparent: true,
-      opacity: 0.3,
+      opacity: 0.9,
       side: THREE.BackSide,
     });
     const glow = new THREE.Mesh(glowGeometry, glowMaterial);
@@ -898,12 +898,15 @@ class SpaceGame {
     this.warpActive = this.keys.shift && this.currentStamina > 0;
 
     // Update stamina
+    // if (this.warpActive) {
+    //   // Drain stamina when warping
+    //   this.currentStamina = Math.max(
+    //     0,
+    //     this.currentStamina - this.staminaUseRate * deltaTime
+    //   );
     if (this.warpActive) {
       // Drain stamina when warping
-      this.currentStamina = Math.max(
-        0,
-        this.currentStamina - this.staminaUseRate * deltaTime
-      );
+      this.currentStamina = 1;
 
       // Update UI
       if (this.staminaBar) {
