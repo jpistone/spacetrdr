@@ -12,29 +12,27 @@ class SpaceGame {
       a: false,
       s: false,
       d: false,
-      space: false,
-      h: false,
+      shift: false, // For warp speed
     };
 
     // Physics
     this.velocity = new THREE.Vector3(0, 0, 0);
     this.acceleration = new THREE.Vector3(0, 0, 0);
     this.thrusterPower = 0.01;
-    this.maxSpeed = 2;
+    this.maxSpeed = 200; // 100x larger (was 2)
     this.drag = 0.98; // Space has no drag, but a small amount helps gameplay
 
-    // Warp drive
+    // Warp speed system
     this.warpActive = false;
-    this.warpEnergy = 100; // 100%
-    this.maxWarpEnergy = 100;
-    this.warpDrainRate = 25; // Drain 25% per second when active
-    this.warpRechargeRate = 10; // Recharge 10% per second when inactive
-    this.warpSpeedMultiplier = 1000;
-    this.warpCooldown = false;
+    this.warpSpeedMultiplier = 100000; // 100x larger (was 1000)
+    this.maxStamina = 100;
+    this.currentStamina = 100;
+    this.staminaRegenRate = 5; // Per second
+    this.staminaUseRate = 20; // Per second
+    this.lastStaminaUpdate = 0;
 
     // UI
     this.showUI = true;
-    this.lastHKeyState = false;
 
     // Mouse control
     this.mouseSensitivity = 0.002;
@@ -43,40 +41,22 @@ class SpaceGame {
     // Galaxy parameters
     this.galaxyParams = {
       starsCount: 15000,
-      galaxyRadius: 1000,
-      galaxyThickness: 50,
+      galaxyRadius: 100000, // 100x larger (was 1000)
+      galaxyThickness: 5000, // 100x larger (was 50)
       spiralArms: 5,
       spiralTightness: 0.7,
-      nebulaCount: 20,
-      nebulaSize: 100,
-      dustLaneCount: 2000,
-      dustLaneSize: 0.5,
+      nebulaCount: 200, // 10x more nebulae for the larger space
+      nebulaSize: 10000, // 100x larger (was 100)
+      dustLaneCount: 20000, // 10x more dust lanes
+      dustLaneSize: 50, // 100x larger (was 0.5)
     };
 
     // Reference vectors
     this.worldUp = new THREE.Vector3(0, 1, 0);
 
-    // Game boundaries
-    this.gameBoundaryRadius = 2000; // Maximum distance from origin
-    this.boundaryWarningDistance = 200; // Distance from boundary to show warning
-    this.boundaryForce = 0.05; // Force pushing player back when hitting boundary
-    this.isNearBoundary = false;
-
-    // Initialize UI elements
-    this.initializeUI();
-
     this.init();
     this.setupEventListeners();
     this.setupSocketListeners();
-  }
-
-  initializeUI() {
-    // Get UI elements
-    this.uiContainer = document.getElementById("ui-container");
-    this.warpContainer = document.getElementById("warp-container");
-    this.warpBar = document.getElementById("warp-bar");
-    this.warpPercentage = document.getElementById("warp-percentage");
-    this.warpActiveIndicator = document.getElementById("warp-active");
   }
 
   init() {
@@ -84,12 +64,12 @@ class SpaceGame {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x000005); // Very dark blue, almost black
 
-    // Create camera
+    // Create camera with increased far plane to see distant objects
     this.camera = new THREE.PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
       0.1,
-      10000
+      10000000 // 1000x larger (was 10000) to see very distant objects
     );
 
     // Create renderer
@@ -116,9 +96,6 @@ class SpaceGame {
 
     // Setup pointer lock
     this.setupPointerLock();
-
-    // Create UI
-    this.createUI();
 
     // Start animation loop
     this.animate();
@@ -151,7 +128,7 @@ class SpaceGame {
     const starsGeometry = new THREE.BufferGeometry();
     const starsMaterial = new THREE.PointsMaterial({
       color: 0xffffff,
-      size: 0.1,
+      size: 10, // 100x larger (was 0.1)
       transparent: true,
       opacity: 0.8,
       sizeAttenuation: false,
@@ -168,21 +145,14 @@ class SpaceGame {
       new THREE.Color(0xddddff), // White-blue
     ];
 
-    for (let i = 0; i < 25000; i++) {
+    for (let i = 0; i < 50000; i++) {
+      // More stars for a larger universe
       // Distribute stars in a sphere around the player
-      // Some closer, some farther away to create depth
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
 
-      // Vary the distance to create layers of stars
-      let distance;
-      if (Math.random() < 0.7) {
-        // 70% of stars are closer but still within game boundary
-        distance = Math.random() * this.gameBoundaryRadius * 0.9;
-      } else {
-        // 30% of stars are very distant (beyond game boundary)
-        distance = this.gameBoundaryRadius * (1.5 + Math.random() * 1.5);
-      }
+      // All stars are now positioned beyond the galaxy
+      const distance = 1000000 + Math.random() * 3000000; // 100x larger
 
       const x = distance * Math.sin(phi) * Math.cos(theta);
       const y = distance * Math.sin(phi) * Math.sin(theta);
@@ -210,9 +180,244 @@ class SpaceGame {
     this.scene.add(distantStars);
   }
 
+  createDistantGalaxies() {
+    // Create several distant galaxies
+    for (let i = 0; i < 30; i++) {
+      // More galaxies
+      // Random position far away from the player
+      const distance = 2000000 + Math.random() * 3000000; // 100x larger
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+
+      const x = distance * Math.sin(phi) * Math.cos(theta);
+      const y = distance * Math.sin(phi) * Math.sin(theta);
+      const z = distance * Math.cos(phi);
+
+      // Create galaxy type (disc, elliptical, or irregular)
+      const galaxyType = Math.floor(Math.random() * 3);
+
+      // Create galaxy container
+      const galaxyContainer = new THREE.Object3D();
+      galaxyContainer.position.set(x, y, z);
+
+      // Random rotation
+      galaxyContainer.rotation.x = Math.random() * Math.PI * 2;
+      galaxyContainer.rotation.y = Math.random() * Math.PI * 2;
+      galaxyContainer.rotation.z = Math.random() * Math.PI * 2;
+
+      // Galaxy size
+      const galaxySize = 100000 + Math.random() * 200000; // 100x larger
+
+      // Create galaxy based on type
+      if (galaxyType === 0) {
+        // Disc galaxy
+        this.createDiscGalaxy(galaxyContainer, galaxySize);
+      } else if (galaxyType === 1) {
+        // Elliptical galaxy
+        this.createEllipticalGalaxy(galaxyContainer, galaxySize);
+      } else {
+        // Irregular galaxy
+        this.createIrregularGalaxy(galaxyContainer, galaxySize);
+      }
+
+      this.scene.add(galaxyContainer);
+    }
+  }
+
+  createDiscGalaxy(container, size) {
+    // Create a disc-shaped galaxy with spiral arms
+    const starsGeometry = new THREE.BufferGeometry();
+    const starsMaterial = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 2000, // 100x larger (was 20)
+      transparent: true,
+      opacity: 0.8,
+      sizeAttenuation: true,
+    });
+
+    const starsVertices = [];
+    const colors = [];
+
+    // Galaxy colors
+    const galaxyColor = new THREE.Color(
+      0.5 + Math.random() * 0.5,
+      0.5 + Math.random() * 0.5,
+      0.5 + Math.random() * 0.5
+    );
+
+    // Create spiral arms
+    const arms = 2 + Math.floor(Math.random() * 4);
+    const armTightness = 0.5 + Math.random() * 1.5;
+
+    for (let i = 0; i < 5000; i++) {
+      const arm = Math.floor(Math.random() * arms);
+      const radius = Math.pow(Math.random(), 0.5) * size;
+      const angle = (arm / arms) * Math.PI * 2 + (armTightness * radius) / size;
+
+      const x = radius * Math.cos(angle + Math.random() * 0.3);
+      const z = radius * Math.sin(angle + Math.random() * 0.3);
+      const y = (Math.random() - 0.5) * size * 0.1;
+
+      starsVertices.push(x, y, z);
+      colors.push(galaxyColor.r, galaxyColor.g, galaxyColor.b);
+    }
+
+    starsGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(starsVertices, 3)
+    );
+    starsGeometry.setAttribute(
+      "color",
+      new THREE.Float32BufferAttribute(colors, 3)
+    );
+
+    starsMaterial.vertexColors = true;
+
+    const stars = new THREE.Points(starsGeometry, starsMaterial);
+    container.add(stars);
+
+    // Add a bright core
+    const coreGeometry = new THREE.SphereGeometry(size * 0.1, 16, 16);
+    const coreMaterial = new THREE.MeshBasicMaterial({
+      color: galaxyColor,
+      transparent: true,
+      opacity: 0.7,
+    });
+    const core = new THREE.Mesh(coreGeometry, coreMaterial);
+    container.add(core);
+  }
+
+  createEllipticalGalaxy(container, size) {
+    // Create an elliptical galaxy (more spherical)
+    const starsGeometry = new THREE.BufferGeometry();
+    const starsMaterial = new THREE.PointsMaterial({
+      color: 0xffffdd,
+      size: 2000, // 100x larger (was 20)
+      transparent: true,
+      opacity: 0.8,
+      sizeAttenuation: true,
+    });
+
+    const starsVertices = [];
+
+    // Galaxy color (ellipticals tend to be redder)
+    const galaxyColor = new THREE.Color(
+      0.8 + Math.random() * 0.2,
+      0.6 + Math.random() * 0.2,
+      0.5 + Math.random() * 0.2
+    );
+
+    // Elliptical shape parameters
+    const a = size;
+    const b = size * (0.7 + Math.random() * 0.3);
+    const c = size * (0.6 + Math.random() * 0.3);
+
+    for (let i = 0; i < 3000; i++) {
+      // Create elliptical distribution
+      const u = Math.random();
+      const v = Math.random();
+      const theta = 2 * Math.PI * u;
+      const phi = Math.acos(2 * v - 1);
+
+      // Radius with higher concentration toward center
+      const r = Math.pow(Math.random(), 2) * size;
+
+      const x = r * Math.sin(phi) * Math.cos(theta) * (a / size);
+      const y = r * Math.sin(phi) * Math.sin(theta) * (b / size);
+      const z = r * Math.cos(phi) * (c / size);
+
+      starsVertices.push(x, y, z);
+    }
+
+    starsGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(starsVertices, 3)
+    );
+
+    starsMaterial.color = galaxyColor;
+
+    const stars = new THREE.Points(starsGeometry, starsMaterial);
+    container.add(stars);
+  }
+
+  createIrregularGalaxy(container, size) {
+    // Create an irregular galaxy with random clumps
+    const starsGeometry = new THREE.BufferGeometry();
+    const starsMaterial = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 2000, // 100x larger (was 20)
+      transparent: true,
+      opacity: 0.8,
+      sizeAttenuation: true,
+    });
+
+    const starsVertices = [];
+    const colors = [];
+
+    // Create random clumps
+    const clumpCount = 3 + Math.floor(Math.random() * 5);
+    const clumpCenters = [];
+    const clumpSizes = [];
+    const clumpColors = [];
+
+    for (let i = 0; i < clumpCount; i++) {
+      // Random position within the galaxy volume
+      const x = (Math.random() - 0.5) * size;
+      const y = (Math.random() - 0.5) * size;
+      const z = (Math.random() - 0.5) * size;
+
+      clumpCenters.push(new THREE.Vector3(x, y, z));
+      clumpSizes.push(size * 0.2 + Math.random() * size * 0.3);
+
+      // Random color for this clump
+      clumpColors.push(
+        new THREE.Color(
+          0.5 + Math.random() * 0.5,
+          0.5 + Math.random() * 0.5,
+          0.5 + Math.random() * 0.5
+        )
+      );
+    }
+
+    // Create stars, with higher probability near clump centers
+    for (let i = 0; i < 4000; i++) {
+      // Choose a random clump
+      const clumpIndex = Math.floor(Math.random() * clumpCount);
+      const clumpCenter = clumpCenters[clumpIndex];
+      const clumpSize = clumpSizes[clumpIndex];
+      const clumpColor = clumpColors[clumpIndex];
+
+      // Random position near the clump center
+      const radius = Math.pow(Math.random(), 0.5) * clumpSize;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+
+      const x = clumpCenter.x + radius * Math.sin(phi) * Math.cos(theta);
+      const y = clumpCenter.y + radius * Math.sin(phi) * Math.sin(theta);
+      const z = clumpCenter.z + radius * Math.cos(phi);
+
+      starsVertices.push(x, y, z);
+      colors.push(clumpColor.r, clumpColor.g, clumpColor.b);
+    }
+
+    starsGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(starsVertices, 3)
+    );
+    starsGeometry.setAttribute(
+      "color",
+      new THREE.Float32BufferAttribute(colors, 3)
+    );
+
+    starsMaterial.vertexColors = true;
+
+    const stars = new THREE.Points(starsGeometry, starsMaterial);
+    container.add(stars);
+  }
+
   createGalacticCore() {
     // Create a bright central core
-    const coreGeometry = new THREE.SphereGeometry(30, 32, 32);
+    const coreGeometry = new THREE.SphereGeometry(3000, 32, 32); // 100x larger (was 30)
     const coreMaterial = new THREE.MeshBasicMaterial({
       color: 0xffffcc,
       transparent: true,
@@ -222,7 +427,7 @@ class SpaceGame {
     this.scene.add(core);
 
     // Add a glow effect
-    const glowGeometry = new THREE.SphereGeometry(40, 32, 32);
+    const glowGeometry = new THREE.SphereGeometry(4000, 32, 32); // 100x larger (was 40)
     const glowMaterial = new THREE.MeshBasicMaterial({
       color: 0xffffaa,
       transparent: true,
@@ -236,14 +441,14 @@ class SpaceGame {
     const coreStarsGeometry = new THREE.BufferGeometry();
     const coreStarsMaterial = new THREE.PointsMaterial({
       color: 0xffffdd,
-      size: 0.5,
+      size: 50, // 100x larger (was 0.5)
       transparent: true,
       opacity: 0.8,
     });
 
     const coreStarsVertices = [];
     for (let i = 0; i < 5000; i++) {
-      const radius = 50 * Math.random();
+      const radius = 5000 * Math.random(); // 100x larger (was 50)
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.random() * Math.PI - Math.PI / 2;
 
@@ -275,9 +480,10 @@ class SpaceGame {
     const armStarsGeometry = new THREE.BufferGeometry();
     const armStarsMaterial = new THREE.PointsMaterial({
       color: 0xffffff,
-      size: 0.7,
+      size: 70, // 100x larger (was 0.7)
       transparent: true,
       opacity: 0.8,
+      sizeAttenuation: true,
     });
 
     const colors = [];
@@ -427,14 +633,14 @@ class SpaceGame {
     for (let i = 0; i < 10; i++) {
       // Random position within the galaxy but not too close to center
       const distance =
-        100 + Math.random() * this.galaxyParams.galaxyRadius * 0.7;
+        10000 + Math.random() * this.galaxyParams.galaxyRadius * 0.7; // 100x larger
       const angle = Math.random() * Math.PI * 2;
       const x = distance * Math.cos(angle);
       const z = distance * Math.sin(angle);
       const y = (Math.random() - 0.5) * this.galaxyParams.galaxyThickness;
 
       // Create a bright point for the star
-      const starGeometry = new THREE.SphereGeometry(1, 8, 8);
+      const starGeometry = new THREE.SphereGeometry(100, 8, 8); // 100x larger (was 1)
       const starMaterial = new THREE.MeshBasicMaterial({
         color: 0xffffff,
         transparent: true,
@@ -446,7 +652,7 @@ class SpaceGame {
       this.scene.add(star);
 
       // Add a glow effect
-      const glowGeometry = new THREE.SphereGeometry(2, 8, 8);
+      const glowGeometry = new THREE.SphereGeometry(200, 8, 8); // 100x larger (was 2)
       const glowMaterial = new THREE.MeshBasicMaterial({
         color: 0xffffdd,
         transparent: true,
@@ -561,15 +767,15 @@ class SpaceGame {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Keyboard controls for thrusters and warp
+    // Keyboard controls for thrusters
     document.addEventListener("keydown", (event) => {
       if (event.key.toLowerCase() === "w") this.keys.w = true;
       if (event.key.toLowerCase() === "a") this.keys.a = true;
       if (event.key.toLowerCase() === "s") this.keys.s = true;
       if (event.key.toLowerCase() === "d") this.keys.d = true;
-      if (event.key === " ") this.keys.space = true;
+      if (event.key === "Shift") this.keys.shift = true;
 
-      // Toggle UI with H key
+      // Toggle UI visibility with H key
       if (event.key.toLowerCase() === "h") {
         this.showUI = !this.showUI;
         this.updateUIVisibility();
@@ -581,7 +787,7 @@ class SpaceGame {
       if (event.key.toLowerCase() === "a") this.keys.a = false;
       if (event.key.toLowerCase() === "s") this.keys.s = false;
       if (event.key.toLowerCase() === "d") this.keys.d = false;
-      if (event.key === " ") this.keys.space = false;
+      if (event.key === "Shift") this.keys.shift = false;
     });
   }
 
@@ -643,14 +849,8 @@ class SpaceGame {
     });
   }
 
-  updateShipPhysics(deltaTime) {
+  updateShipPhysics() {
     if (!this.shipContainer) return;
-
-    // Handle UI toggle
-    if (this.keys.h && !this.lastHKeyState) {
-      this.toggleUI();
-    }
-    this.lastHKeyState = this.keys.h;
 
     // Reset acceleration
     this.acceleration.set(0, 0, 0);
@@ -668,8 +868,40 @@ class SpaceGame {
     shipUp.applyQuaternion(this.pitchObject.quaternion);
     shipUp.applyQuaternion(this.yawObject.quaternion);
 
-    // Handle warp drive
-    this.updateWarpDrive(deltaTime);
+    // Handle warp speed
+    const now = performance.now();
+    const deltaTime = (now - this.lastStaminaUpdate) / 1000; // Convert to seconds
+    this.lastStaminaUpdate = now;
+
+    // Check if warp is active
+    this.warpActive = this.keys.shift && this.currentStamina > 0;
+
+    // Update stamina
+    if (this.warpActive) {
+      // Drain stamina when warping
+      this.currentStamina = Math.max(
+        0,
+        this.currentStamina - this.staminaUseRate * deltaTime
+      );
+
+      // Update UI
+      if (this.staminaBar) {
+        this.staminaBar.style.width = `${this.currentStamina}%`;
+        this.staminaBar.style.backgroundColor = "rgba(255, 165, 0, 0.7)"; // Orange when active
+      }
+    } else {
+      // Regenerate stamina when not warping
+      this.currentStamina = Math.min(
+        this.maxStamina,
+        this.currentStamina + this.staminaRegenRate * deltaTime
+      );
+
+      // Update UI
+      if (this.staminaBar) {
+        this.staminaBar.style.width = `${this.currentStamina}%`;
+        this.staminaBar.style.backgroundColor = "rgba(0, 255, 0, 0.7)"; // Green when recharging
+      }
+    }
 
     // Calculate thrust power (normal or warp)
     let currentThrusterPower = this.thrusterPower;
@@ -700,16 +932,10 @@ class SpaceGame {
     // Apply drag
     this.velocity.multiplyScalar(this.drag);
 
-    // Limit maximum speed (different for normal and warp)
-    const currentMaxSpeed = this.warpActive
-      ? this.maxSpeed * this.warpSpeedMultiplier
-      : this.maxSpeed;
-    if (this.velocity.length() > currentMaxSpeed) {
-      this.velocity.normalize().multiplyScalar(currentMaxSpeed);
+    // Limit maximum speed
+    if (this.velocity.length() > this.maxSpeed) {
+      this.velocity.normalize().multiplyScalar(this.maxSpeed);
     }
-
-    // Apply boundary constraints before updating position
-    this.applyBoundaryConstraints();
 
     // Update position based on velocity
     this.shipContainer.position.add(this.velocity);
@@ -740,615 +966,95 @@ class SpaceGame {
         z: this.velocity.z,
       },
     });
-
-    // Update speed display
-    this.updateSpeedDisplay();
-  }
-
-  updateWarpDrive(deltaTime) {
-    // Check if warp drive should be activated
-    if (this.keys.space && this.warpEnergy > 0 && !this.warpCooldown) {
-      this.warpActive = true;
-
-      // Drain warp energy
-      this.warpEnergy -= this.warpDrainRate * deltaTime;
-
-      // If energy depleted, deactivate warp and set cooldown
-      if (this.warpEnergy <= 0) {
-        this.warpEnergy = 0;
-        this.warpActive = false;
-        this.warpCooldown = true;
-
-        // Reset cooldown after 1 second
-        setTimeout(() => {
-          this.warpCooldown = false;
-        }, 1000);
-      }
-    } else {
-      // Warp is not active
-      this.warpActive = false;
-
-      // Recharge warp energy if not in cooldown
-      if (!this.warpCooldown && this.warpEnergy < this.maxWarpEnergy) {
-        this.warpEnergy += this.warpRechargeRate * deltaTime;
-
-        // Cap at max energy
-        if (this.warpEnergy > this.maxWarpEnergy) {
-          this.warpEnergy = this.maxWarpEnergy;
-        }
-      }
-    }
-
-    // Update warp UI
-    this.updateWarpUI();
   }
 
   animate() {
     requestAnimationFrame(this.animate.bind(this));
 
-    // Calculate delta time for consistent updates
-    const now = performance.now();
-    if (!this.lastTime) this.lastTime = now;
-    const deltaTime = (now - this.lastTime) / 1000; // Convert to seconds
-    this.lastTime = now;
-
-    this.updateShipPhysics(deltaTime);
+    this.updateShipPhysics();
 
     this.renderer.render(this.scene, this.camera);
   }
 
-  createDistantGalaxies() {
-    const textureLoader = new THREE.TextureLoader();
-
-    // Create 20 distant galaxies - position them well beyond the game boundary
-    for (let i = 0; i < 20; i++) {
-      // Random position far away from the player (3-5x the game boundary)
-      const distance = this.gameBoundaryRadius * (3 + Math.random() * 2);
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-
-      const x = distance * Math.sin(phi) * Math.cos(theta);
-      const y = distance * Math.sin(phi) * Math.sin(theta);
-      const z = distance * Math.cos(phi);
-
-      // Create a galaxy sprite
-      const galaxySize = 200 + Math.random() * 300;
-      const galaxyMaterial = new THREE.SpriteMaterial({
-        map: this.generateGalaxyTexture(),
-        color: this.getRandomGalaxyColor(),
-        transparent: true,
-        opacity: 0.8,
-      });
-
-      const galaxy = new THREE.Sprite(galaxyMaterial);
-      galaxy.position.set(x, y, z);
-      galaxy.scale.set(galaxySize, galaxySize, 1);
-
-      // Random rotation
-      galaxy.material.rotation = Math.random() * Math.PI * 2;
-
-      this.scene.add(galaxy);
-    }
-  }
-
-  generateGalaxyTexture() {
-    // Create a canvas to draw the galaxy texture
-    const canvas = document.createElement("canvas");
-    canvas.width = 128;
-    canvas.height = 128;
-    const context = canvas.getContext("2d");
-
-    // Clear canvas
-    context.fillStyle = "rgba(0,0,0,0)";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw galaxy
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    const maxRadius = canvas.width / 2;
-
-    // Choose a galaxy type (0: elliptical, 1: spiral, 2: irregular)
-    const galaxyType = Math.floor(Math.random() * 3);
-
-    if (galaxyType === 0) {
-      // Elliptical galaxy
-      const gradient = context.createRadialGradient(
-        centerX,
-        centerY,
-        0,
-        centerX,
-        centerY,
-        maxRadius
-      );
-      gradient.addColorStop(0, "rgba(255, 255, 255, 0.8)");
-      gradient.addColorStop(0.2, "rgba(255, 255, 255, 0.6)");
-      gradient.addColorStop(0.5, "rgba(255, 255, 255, 0.3)");
-      gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
-
-      context.fillStyle = gradient;
-      context.beginPath();
-      context.arc(centerX, centerY, maxRadius, 0, Math.PI * 2);
-      context.fill();
-    } else if (galaxyType === 1) {
-      // Spiral galaxy
-      const arms = 2 + Math.floor(Math.random() * 3); // 2-4 arms
-      const armWidth = 0.2 + Math.random() * 0.3; // Width of arms
-      const tightness = 3 + Math.random() * 2; // How tight the spiral is
-
-      // Draw core
-      const coreGradient = context.createRadialGradient(
-        centerX,
-        centerY,
-        0,
-        centerX,
-        centerY,
-        maxRadius * 0.2
-      );
-      coreGradient.addColorStop(0, "rgba(255, 255, 255, 0.8)");
-      coreGradient.addColorStop(1, "rgba(255, 255, 255, 0.1)");
-
-      context.fillStyle = coreGradient;
-      context.beginPath();
-      context.arc(centerX, centerY, maxRadius * 0.2, 0, Math.PI * 2);
-      context.fill();
-
-      // Draw spiral arms
-      for (let a = 0; a < arms; a++) {
-        const angleOffset = (a / arms) * Math.PI * 2;
-
-        for (let r = 0.2; r < 1; r += 0.01) {
-          const angle = angleOffset + tightness * r;
-          const x = centerX + Math.cos(angle) * maxRadius * r;
-          const y = centerY + Math.sin(angle) * maxRadius * r;
-
-          const size = 2 + Math.random() * 3;
-          const alpha = (1 - r) * (0.1 + Math.random() * 0.2);
-
-          context.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-          context.beginPath();
-          context.arc(x, y, size, 0, Math.PI * 2);
-          context.fill();
-        }
-      }
-    } else {
-      // Irregular galaxy
-      for (let i = 0; i < 200; i++) {
-        const radius = Math.random() * maxRadius;
-        const angle = Math.random() * Math.PI * 2;
-        const x = centerX + Math.cos(angle) * radius;
-        const y = centerY + Math.sin(angle) * radius;
-
-        const size = 1 + Math.random() * 3;
-        const alpha = 0.1 + Math.random() * 0.4;
-
-        context.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-        context.beginPath();
-        context.arc(x, y, size, 0, Math.PI * 2);
-        context.fill();
-      }
-    }
-
-    // Create texture from canvas
-    const texture = new THREE.CanvasTexture(canvas);
-    return texture;
-  }
-
-  getRandomGalaxyColor() {
-    // Generate random colors for galaxies
-    const colors = [
-      0xffffff, // White
-      0xffddaa, // Yellowish
-      0xaaddff, // Bluish
-      0xffaadd, // Pinkish
-      0xaaffaa, // Greenish
-    ];
-
-    return colors[Math.floor(Math.random() * colors.length)];
-  }
-
-  setupUI() {
-    // Get UI elements
-    this.uiContainer = document.getElementById("ui-container");
-    this.warpContainer = document.getElementById("warp-container");
-    this.warpBar = document.getElementById("warp-bar");
-    this.warpPercentage = document.getElementById("warp-percentage");
-    this.warpActiveIndicator = document.getElementById("warp-active");
-
-    // Update warp bar
-    this.updateWarpUI();
-  }
-
-  updateWarpUI() {
-    // Check if UI elements exist before updating
-    if (!this.warpBar || !this.warpPercentage || !this.warpActiveIndicator)
-      return;
-
-    // Update warp energy bar
-    this.warpBar.style.width = `${this.warpEnergy}%`;
-    this.warpPercentage.textContent = `${Math.round(this.warpEnergy)}%`;
-
-    // Update bar color based on state
-    if (this.warpActive) {
-      this.warpBar.className = "";
-      this.warpActiveIndicator.style.display = "block";
-    } else if (this.warpCooldown) {
-      this.warpBar.className = "depleted";
-      this.warpActiveIndicator.style.display = "none";
-    } else if (this.warpEnergy < 100) {
-      this.warpBar.className = "charging";
-      this.warpActiveIndicator.style.display = "none";
-    } else {
-      this.warpBar.className = "";
-      this.warpActiveIndicator.style.display = "none";
-    }
-  }
-
-  toggleUI() {
-    // Check if UI elements exist before toggling
-    if (!this.uiContainer || !this.warpContainer) return;
-
-    this.showUI = !this.showUI;
-    this.updateUIVisibility();
-  }
-
   createUI() {
-    // Add space font to document
-    const fontLink = document.createElement("link");
-    fontLink.href =
-      "https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap";
-    fontLink.rel = "stylesheet";
-    document.head.appendChild(fontLink);
-
     // Create UI container
     this.uiContainer = document.createElement("div");
-    this.uiContainer.id = "controls-ui";
+    this.uiContainer.id = "game-ui";
     this.uiContainer.style.position = "absolute";
     this.uiContainer.style.bottom = "20px";
     this.uiContainer.style.left = "20px";
-    this.uiContainer.style.color = "#0ff";
-    this.uiContainer.style.fontFamily = "'Orbitron', sans-serif";
-    this.uiContainer.style.padding = "20px";
-    this.uiContainer.style.backgroundColor = "rgba(0, 20, 40, 0.7)";
+    this.uiContainer.style.color = "white";
+    this.uiContainer.style.fontFamily = "Arial, sans-serif";
+    this.uiContainer.style.padding = "15px";
+    this.uiContainer.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
     this.uiContainer.style.borderRadius = "5px";
     this.uiContainer.style.zIndex = "100";
-    this.uiContainer.style.boxShadow = "0 0 15px rgba(0, 255, 255, 0.5)";
-    this.uiContainer.style.border = "1px solid #0ff";
 
     // Controls section
     const controlsTitle = document.createElement("h3");
-    controlsTitle.textContent = "NAVIGATION CONTROLS";
-    controlsTitle.style.margin = "0 0 15px 0";
-    controlsTitle.style.textAlign = "center";
-    controlsTitle.style.letterSpacing = "2px";
-    controlsTitle.style.color = "#0ff";
-    controlsTitle.style.textShadow = "0 0 5px #0ff";
+    controlsTitle.textContent = "Controls";
+    controlsTitle.style.margin = "0 0 10px 0";
     this.uiContainer.appendChild(controlsTitle);
 
-    // Divider
-    const divider = document.createElement("div");
-    divider.style.height = "2px";
-    divider.style.background =
-      "linear-gradient(to right, transparent, #0ff, transparent)";
-    divider.style.margin = "0 0 15px 0";
-    this.uiContainer.appendChild(divider);
-
     const controlsList = document.createElement("ul");
-    controlsList.style.padding = "0";
+    controlsList.style.padding = "0 0 0 20px";
     controlsList.style.margin = "0";
     controlsList.style.listStyleType = "none";
 
     const controls = [
-      { key: "W", action: "Forward thrust" },
-      { key: "S", action: "Backward thrust" },
-      { key: "A", action: "Left thrust" },
-      { key: "D", action: "Right thrust" },
-      { key: "MOUSE", action: "Steer ship" },
-      { key: "H", action: "Toggle HUD" },
-      { key: "CLICK", action: "Lock/unlock controls" },
+      "W - Forward thrust",
+      "S - Backward thrust",
+      "A - Left thrust",
+      "D - Right thrust",
+      "Mouse - Steer ship",
+      "Shift - Warp speed (uses stamina)",
+      "H - Toggle UI visibility",
+      "Click - Lock/unlock mouse",
     ];
 
     controls.forEach((control) => {
       const item = document.createElement("li");
-      item.style.margin = "10px 0";
-      item.style.display = "flex";
-      item.style.alignItems = "center";
-
-      const keySpan = document.createElement("span");
-      keySpan.textContent = control.key;
-      keySpan.style.display = "inline-block";
-      keySpan.style.width = "80px";
-      keySpan.style.backgroundColor = "rgba(0, 100, 150, 0.5)";
-      keySpan.style.padding = "5px 10px";
-      keySpan.style.borderRadius = "3px";
-      keySpan.style.marginRight = "10px";
-      keySpan.style.textAlign = "center";
-      keySpan.style.fontWeight = "bold";
-      keySpan.style.border = "1px solid #0aa";
-
-      const actionSpan = document.createElement("span");
-      actionSpan.textContent = control.action;
-      actionSpan.style.color = "#8ff";
-
-      item.appendChild(keySpan);
-      item.appendChild(actionSpan);
+      item.textContent = control;
+      item.style.margin = "5px 0";
       controlsList.appendChild(item);
     });
 
     this.uiContainer.appendChild(controlsList);
 
-    // Footer
-    const footer = document.createElement("div");
-    footer.textContent = "PRESS H TO TOGGLE DISPLAY";
-    footer.style.marginTop = "15px";
-    footer.style.fontSize = "10px";
-    footer.style.textAlign = "center";
-    footer.style.color = "#0aa";
-    this.uiContainer.appendChild(footer);
+    // Stamina bar
+    const staminaContainer = document.createElement("div");
+    staminaContainer.style.marginTop = "15px";
 
-    document.body.appendChild(this.uiContainer);
+    const staminaLabel = document.createElement("div");
+    staminaLabel.textContent = "Warp Stamina";
+    staminaLabel.style.marginBottom = "5px";
+    staminaContainer.appendChild(staminaLabel);
 
-    // Create speed and warp indicator
-    this.speedContainer = document.createElement("div");
-    this.speedContainer.id = "speed-container";
-    this.speedContainer.style.position = "absolute";
-    this.speedContainer.style.top = "20px";
-    this.speedContainer.style.right = "20px";
-    this.speedContainer.style.color = "#0ff";
-    this.speedContainer.style.fontFamily = "'Orbitron', sans-serif";
-    this.speedContainer.style.padding = "15px";
-    this.speedContainer.style.backgroundColor = "rgba(0, 20, 40, 0.7)";
-    this.speedContainer.style.borderRadius = "5px";
-    this.speedContainer.style.zIndex = "100";
-    this.speedContainer.style.boxShadow = "0 0 15px rgba(0, 255, 255, 0.5)";
-    this.speedContainer.style.border = "1px solid #0ff";
-    this.speedContainer.style.minWidth = "200px";
-    this.speedContainer.style.textAlign = "center";
+    const staminaBarContainer = document.createElement("div");
+    staminaBarContainer.style.width = "200px";
+    staminaBarContainer.style.height = "15px";
+    staminaBarContainer.style.backgroundColor = "rgba(50, 50, 50, 0.7)";
+    staminaBarContainer.style.borderRadius = "3px";
+    staminaBarContainer.style.overflow = "hidden";
 
-    // Speed title
-    const speedTitle = document.createElement("h3");
-    speedTitle.textContent = "NAVIGATION DATA";
-    speedTitle.style.margin = "0 0 10px 0";
-    speedTitle.style.textAlign = "center";
-    speedTitle.style.letterSpacing = "2px";
-    speedTitle.style.color = "#0ff";
-    speedTitle.style.textShadow = "0 0 5px #0ff";
-    this.speedContainer.appendChild(speedTitle);
+    this.staminaBar = document.createElement("div");
+    this.staminaBar.style.width = "100%";
+    this.staminaBar.style.height = "100%";
+    this.staminaBar.style.backgroundColor = "rgba(0, 255, 0, 0.7)";
+    this.staminaBar.style.borderRadius = "3px";
+    this.staminaBar.style.overflow = "hidden";
 
-    // Divider
-    const speedDivider = document.createElement("div");
-    speedDivider.style.height = "2px";
-    speedDivider.style.background =
-      "linear-gradient(to right, transparent, #0ff, transparent)";
-    speedDivider.style.margin = "0 0 10px 0";
-    this.speedContainer.appendChild(speedDivider);
+    staminaContainer.appendChild(staminaBarContainer);
+    staminaContainer.appendChild(this.staminaBar);
 
-    // Speed display
-    this.speedDisplay = document.createElement("div");
-    this.speedDisplay.style.fontSize = "24px";
-    this.speedDisplay.style.fontWeight = "bold";
-    this.speedDisplay.style.margin = "10px 0";
-    this.speedDisplay.style.textShadow = "0 0 5px #0ff";
-    this.speedContainer.appendChild(this.speedDisplay);
-
-    // Warp status
-    this.warpStatus = document.createElement("div");
-    this.warpStatus.style.fontSize = "18px";
-    this.warpStatus.style.margin = "5px 0";
-    this.warpStatus.style.fontWeight = "bold";
-    this.speedContainer.appendChild(this.warpStatus);
-
-    // Position display
-    this.positionDisplay = document.createElement("div");
-    this.positionDisplay.style.fontSize = "12px";
-    this.positionDisplay.style.margin = "10px 0 5px 0";
-    this.positionDisplay.style.color = "#8ff";
-    this.speedContainer.appendChild(this.positionDisplay);
-
-    // Warp energy bar
-    const warpEnergyContainer = document.createElement("div");
-    warpEnergyContainer.style.margin = "10px 0";
-    this.speedContainer.appendChild(warpEnergyContainer);
-
-    const warpLabel = document.createElement("div");
-    warpLabel.textContent = "WARP ENERGY";
-    warpLabel.style.fontSize = "12px";
-    warpLabel.style.marginBottom = "5px";
-    warpEnergyContainer.appendChild(warpLabel);
-
-    const warpBarContainer = document.createElement("div");
-    warpBarContainer.style.width = "100%";
-    warpBarContainer.style.height = "15px";
-    warpBarContainer.style.backgroundColor = "rgba(0, 40, 60, 0.5)";
-    warpBarContainer.style.borderRadius = "3px";
-    warpBarContainer.style.overflow = "hidden";
-    warpBarContainer.style.border = "1px solid #0aa";
-    warpEnergyContainer.appendChild(warpBarContainer);
-
-    this.warpEnergyBar = document.createElement("div");
-    this.warpEnergyBar.style.height = "100%";
-    this.warpEnergyBar.style.width = "100%";
-    this.warpEnergyBar.style.backgroundColor = "#0ff";
-    this.warpEnergyBar.style.transition = "width 0.2s, background-color 0.3s";
-    warpBarContainer.appendChild(this.warpEnergyBar);
-
-    // Warp key hint
-    const warpHint = document.createElement("div");
-    warpHint.textContent = "PRESS SPACE FOR WARP DRIVE";
-    warpHint.style.fontSize = "10px";
-    warpHint.style.marginTop = "5px";
-    warpHint.style.color = "#0aa";
-    warpEnergyContainer.appendChild(warpHint);
-
-    document.body.appendChild(this.speedContainer);
-
-    // Add boundary warning indicator
-    this.boundaryWarning = document.createElement("div");
-    this.boundaryWarning.style.fontSize = "16px";
-    this.boundaryWarning.style.fontWeight = "bold";
-    this.boundaryWarning.style.margin = "10px 0 5px 0";
-    this.boundaryWarning.style.color = "#ff3333";
-    this.boundaryWarning.style.display = "none";
-    this.boundaryWarning.textContent = "⚠️ BOUNDARY PROXIMITY WARNING ⚠️";
-    this.speedContainer.appendChild(this.boundaryWarning);
-  }
-
-  updateSpeedDisplay() {
-    if (
-      !this.speedDisplay ||
-      !this.warpStatus ||
-      !this.positionDisplay ||
-      !this.warpEnergyBar ||
-      !this.boundaryWarning
-    )
-      return;
-
-    // Calculate current speed
-    const speed = this.velocity.length();
-    const displaySpeed = Math.round(speed * 100) / 100;
-
-    // Update speed text
-    this.speedDisplay.textContent = `${displaySpeed} u/s`;
-
-    // Update warp status
-    if (this.warpActive) {
-      this.warpStatus.textContent = "WARP DRIVE ACTIVE";
-      this.warpStatus.style.color = "#ff9900";
-      this.speedDisplay.style.color = "#ff9900";
-    } else if (this.warpCooldown) {
-      this.warpStatus.textContent = "WARP DRIVE COOLING";
-      this.warpStatus.style.color = "#ff3333";
-      this.speedDisplay.style.color = "#0ff";
-    } else if (this.warpEnergy < this.maxWarpEnergy) {
-      this.warpStatus.textContent = "WARP DRIVE CHARGING";
-      this.warpStatus.style.color = "#ffff00";
-      this.speedDisplay.style.color = "#0ff";
-    } else {
-      this.warpStatus.textContent = "WARP DRIVE READY";
-      this.warpStatus.style.color = "#00ff00";
-      this.speedDisplay.style.color = "#0ff";
-    }
-
-    // Update position display
-    this.positionDisplay.textContent = `POS: X:${Math.round(
-      this.shipContainer.position.x
-    )} Y:${Math.round(this.shipContainer.position.y)} Z:${Math.round(
-      this.shipContainer.position.z
-    )}`;
-
-    // Update warp energy bar
-    this.warpEnergyBar.style.width = `${
-      (this.warpEnergy / this.maxWarpEnergy) * 100
-    }%`;
-
-    // Update bar color based on state
-    if (this.warpActive) {
-      this.warpEnergyBar.style.backgroundColor = "#ff9900";
-    } else if (this.warpCooldown) {
-      this.warpEnergyBar.style.backgroundColor = "#ff3333";
-    } else if (this.warpEnergy < this.maxWarpEnergy) {
-      this.warpEnergyBar.style.backgroundColor = "#ffff00";
-    } else {
-      this.warpEnergyBar.style.backgroundColor = "#00ff00";
-    }
-
-    // Update boundary warning
-    if (this.isNearBoundary) {
-      this.boundaryWarning.style.display = "block";
-
-      // Calculate distance to boundary as percentage
-      const distanceFromOrigin = this.shipContainer.position.length();
-      const distanceToBoundary = this.gameBoundaryRadius - distanceFromOrigin;
-      const boundaryProximity = Math.max(
-        0,
-        Math.min(100, (distanceToBoundary / this.boundaryWarningDistance) * 100)
-      );
-
-      // Make warning flash faster as player gets closer to boundary
-      const flashSpeed = 100 + (100 - boundaryProximity) * 9; // 100ms to 1000ms
-
-      // Create flashing effect
-      const now = Date.now();
-      if (Math.floor(now / flashSpeed) % 2 === 0) {
-        this.boundaryWarning.style.opacity = "1.0";
-      } else {
-        this.boundaryWarning.style.opacity = "0.5";
-      }
-
-      // Update warning text with distance
-      this.boundaryWarning.textContent = `⚠️ BOUNDARY PROXIMITY WARNING: ${Math.round(
-        distanceToBoundary
-      )} UNITS ⚠️`;
-    } else {
-      this.boundaryWarning.style.display = "none";
-    }
+    this.uiContainer.appendChild(staminaContainer);
   }
 
   updateUIVisibility() {
     if (this.showUI) {
-      this.uiContainer.style.display = "block";
-      this.speedContainer.style.display = "block";
+      document.body.appendChild(this.uiContainer);
     } else {
-      this.uiContainer.style.display = "none";
-      this.speedContainer.style.display = "none";
-    }
-  }
-
-  applyBoundaryConstraints() {
-    // Calculate distance from origin
-    const distanceFromOrigin = this.shipContainer.position.length();
-
-    // Check if near or at boundary
-    if (
-      distanceFromOrigin >
-      this.gameBoundaryRadius - this.boundaryWarningDistance
-    ) {
-      // Player is approaching the boundary
-      this.isNearBoundary = true;
-
-      if (distanceFromOrigin > this.gameBoundaryRadius) {
-        // Player has hit the boundary, apply force pushing back toward center
-        const directionToCenter = new THREE.Vector3()
-          .copy(this.shipContainer.position)
-          .negate()
-          .normalize();
-
-        // Calculate repulsion force (stronger the further past boundary)
-        const overBoundaryAmount = distanceFromOrigin - this.gameBoundaryRadius;
-        const repulsionStrength =
-          this.boundaryForce * (1 + overBoundaryAmount * 0.1);
-
-        // Apply repulsion force to velocity
-        this.velocity.addScaledVector(directionToCenter, repulsionStrength);
-
-        // Dampen velocity component pointing away from center
-        const normalizedPosition = this.shipContainer.position
-          .clone()
-          .normalize();
-        const outwardVelocityComponent = this.velocity.dot(normalizedPosition);
-
-        if (outwardVelocityComponent > 0) {
-          // Subtract the outward component from velocity
-          const outwardVelocity = normalizedPosition.multiplyScalar(
-            outwardVelocityComponent
-          );
-          this.velocity.sub(outwardVelocity);
-
-          // Add slight inward velocity
-          this.velocity.addScaledVector(directionToCenter, 0.05);
-        }
-
-        // Ensure player can't go further out
-        if (distanceFromOrigin > this.gameBoundaryRadius * 1.05) {
-          // Hard limit - teleport slightly inside boundary if somehow got too far
-          const newPosition = this.shipContainer.position
-            .clone()
-            .normalize()
-            .multiplyScalar(this.gameBoundaryRadius * 0.95);
-          this.shipContainer.position.copy(newPosition);
-        }
-      }
-    } else {
-      this.isNearBoundary = false;
+      document.body.removeChild(this.uiContainer);
     }
   }
 }
