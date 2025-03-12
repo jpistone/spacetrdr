@@ -12,6 +12,8 @@ class SpaceGame {
       a: false,
       s: false,
       d: false,
+      space: false,
+      h: false,
     };
 
     // Physics
@@ -20,6 +22,19 @@ class SpaceGame {
     this.thrusterPower = 0.01;
     this.maxSpeed = 2;
     this.drag = 0.98; // Space has no drag, but a small amount helps gameplay
+
+    // Warp drive
+    this.warpActive = false;
+    this.warpEnergy = 100; // 100%
+    this.maxWarpEnergy = 100;
+    this.warpDrainRate = 25; // Drain 25% per second when active
+    this.warpRechargeRate = 10; // Recharge 10% per second when inactive
+    this.warpSpeedMultiplier = 1000;
+    this.warpCooldown = false;
+
+    // UI
+    this.uiVisible = true;
+    this.lastHKeyState = false;
 
     // Mouse control
     this.mouseSensitivity = 0.002;
@@ -41,9 +56,21 @@ class SpaceGame {
     // Reference vectors
     this.worldUp = new THREE.Vector3(0, 1, 0);
 
+    // Initialize UI elements
+    this.initializeUI();
+
     this.init();
     this.setupEventListeners();
     this.setupSocketListeners();
+  }
+
+  initializeUI() {
+    // Get UI elements
+    this.uiContainer = document.getElementById("ui-container");
+    this.warpContainer = document.getElementById("warp-container");
+    this.warpBar = document.getElementById("warp-bar");
+    this.warpPercentage = document.getElementById("warp-percentage");
+    this.warpActiveIndicator = document.getElementById("warp-active");
   }
 
   init() {
@@ -92,6 +119,9 @@ class SpaceGame {
     // Create distant background stars (tiny points)
     this.createDistantStars();
 
+    // Create distant galaxies
+    this.createDistantGalaxies();
+
     // Create galactic core (bright center)
     this.createGalacticCore();
 
@@ -119,23 +149,54 @@ class SpaceGame {
     });
 
     const starsVertices = [];
-    for (let i = 0; i < 20000; i++) {
+    const colors = [];
+
+    // Create different colored stars
+    const starColors = [
+      new THREE.Color(0xffffdd), // Yellow-white
+      new THREE.Color(0xffd6aa), // Orange-white
+      new THREE.Color(0xaaaaff), // Blue-white
+      new THREE.Color(0xddddff), // White-blue
+    ];
+
+    for (let i = 0; i < 25000; i++) {
       // Distribute stars in a sphere around the player
+      // Some closer, some farther away to create depth
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
-      const distance = 5000 + Math.random() * 3000;
+
+      // Vary the distance to create layers of stars
+      let distance;
+      if (Math.random() < 0.7) {
+        // 70% of stars are closer
+        distance = 3000 + Math.random() * 3000;
+      } else {
+        // 30% of stars are very distant (near the galaxies)
+        distance = 6000 + Math.random() * 3000;
+      }
 
       const x = distance * Math.sin(phi) * Math.cos(theta);
       const y = distance * Math.sin(phi) * Math.sin(theta);
       const z = distance * Math.cos(phi);
 
       starsVertices.push(x, y, z);
+
+      // Assign random star color
+      const color = starColors[Math.floor(Math.random() * starColors.length)];
+      colors.push(color.r, color.g, color.b);
     }
 
     starsGeometry.setAttribute(
       "position",
       new THREE.Float32BufferAttribute(starsVertices, 3)
     );
+    starsGeometry.setAttribute(
+      "color",
+      new THREE.Float32BufferAttribute(colors, 3)
+    );
+
+    starsMaterial.vertexColors = true;
+
     const distantStars = new THREE.Points(starsGeometry, starsMaterial);
     this.scene.add(distantStars);
   }
@@ -491,12 +552,14 @@ class SpaceGame {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Keyboard controls for thrusters
+    // Keyboard controls
     document.addEventListener("keydown", (event) => {
       if (event.key.toLowerCase() === "w") this.keys.w = true;
       if (event.key.toLowerCase() === "a") this.keys.a = true;
       if (event.key.toLowerCase() === "s") this.keys.s = true;
       if (event.key.toLowerCase() === "d") this.keys.d = true;
+      if (event.key === " ") this.keys.space = true;
+      if (event.key.toLowerCase() === "h") this.keys.h = true;
     });
 
     document.addEventListener("keyup", (event) => {
@@ -504,6 +567,8 @@ class SpaceGame {
       if (event.key.toLowerCase() === "a") this.keys.a = false;
       if (event.key.toLowerCase() === "s") this.keys.s = false;
       if (event.key.toLowerCase() === "d") this.keys.d = false;
+      if (event.key === " ") this.keys.space = false;
+      if (event.key.toLowerCase() === "h") this.keys.h = false;
     });
   }
 
@@ -565,14 +630,19 @@ class SpaceGame {
     });
   }
 
-  updateShipPhysics() {
+  updateShipPhysics(deltaTime) {
     if (!this.shipContainer) return;
+
+    // Handle UI toggle
+    if (this.keys.h && !this.lastHKeyState) {
+      this.toggleUI();
+    }
+    this.lastHKeyState = this.keys.h;
 
     // Reset acceleration
     this.acceleration.set(0, 0, 0);
 
     // Get ship's direction vectors based on the pitch object's orientation
-    // This ensures we get the correct forward direction
     const shipForward = new THREE.Vector3(0, 0, -1);
     shipForward.applyQuaternion(this.pitchObject.quaternion);
     shipForward.applyQuaternion(this.yawObject.quaternion);
@@ -585,21 +655,30 @@ class SpaceGame {
     shipUp.applyQuaternion(this.pitchObject.quaternion);
     shipUp.applyQuaternion(this.yawObject.quaternion);
 
+    // Handle warp drive
+    this.updateWarpDrive(deltaTime);
+
+    // Calculate thrust power (normal or warp)
+    let currentThrusterPower = this.thrusterPower;
+    if (this.warpActive) {
+      currentThrusterPower *= this.warpSpeedMultiplier;
+    }
+
     // Apply thrust based on key presses
     // Forward/backward thrust (W/S)
     if (this.keys.w) {
-      this.acceleration.addScaledVector(shipForward, this.thrusterPower);
+      this.acceleration.addScaledVector(shipForward, currentThrusterPower);
     }
     if (this.keys.s) {
-      this.acceleration.addScaledVector(shipForward, -this.thrusterPower);
+      this.acceleration.addScaledVector(shipForward, -currentThrusterPower);
     }
 
     // Left/right thrust (A/D)
     if (this.keys.a) {
-      this.acceleration.addScaledVector(shipRight, -this.thrusterPower);
+      this.acceleration.addScaledVector(shipRight, -currentThrusterPower);
     }
     if (this.keys.d) {
-      this.acceleration.addScaledVector(shipRight, this.thrusterPower);
+      this.acceleration.addScaledVector(shipRight, currentThrusterPower);
     }
 
     // Update velocity based on acceleration
@@ -608,9 +687,12 @@ class SpaceGame {
     // Apply drag
     this.velocity.multiplyScalar(this.drag);
 
-    // Limit maximum speed
-    if (this.velocity.length() > this.maxSpeed) {
-      this.velocity.normalize().multiplyScalar(this.maxSpeed);
+    // Limit maximum speed (different for normal and warp)
+    const currentMaxSpeed = this.warpActive
+      ? this.maxSpeed * this.warpSpeedMultiplier
+      : this.maxSpeed;
+    if (this.velocity.length() > currentMaxSpeed) {
+      this.velocity.normalize().multiplyScalar(currentMaxSpeed);
     }
 
     // Update position based on velocity
@@ -644,12 +726,257 @@ class SpaceGame {
     });
   }
 
+  updateWarpDrive(deltaTime) {
+    // Check if warp drive should be activated
+    if (this.keys.space && this.warpEnergy > 0 && !this.warpCooldown) {
+      this.warpActive = true;
+
+      // Drain warp energy
+      this.warpEnergy -= this.warpDrainRate * deltaTime;
+
+      // If energy depleted, deactivate warp and set cooldown
+      if (this.warpEnergy <= 0) {
+        this.warpEnergy = 0;
+        this.warpActive = false;
+        this.warpCooldown = true;
+
+        // Reset cooldown after 1 second
+        setTimeout(() => {
+          this.warpCooldown = false;
+        }, 1000);
+      }
+    } else {
+      // Warp is not active
+      this.warpActive = false;
+
+      // Recharge warp energy if not in cooldown
+      if (!this.warpCooldown && this.warpEnergy < this.maxWarpEnergy) {
+        this.warpEnergy += this.warpRechargeRate * deltaTime;
+
+        // Cap at max energy
+        if (this.warpEnergy > this.maxWarpEnergy) {
+          this.warpEnergy = this.maxWarpEnergy;
+        }
+      }
+    }
+
+    // Update warp UI
+    this.updateWarpUI();
+  }
+
   animate() {
     requestAnimationFrame(this.animate.bind(this));
 
-    this.updateShipPhysics();
+    // Calculate delta time for consistent updates
+    const now = performance.now();
+    if (!this.lastTime) this.lastTime = now;
+    const deltaTime = (now - this.lastTime) / 1000; // Convert to seconds
+    this.lastTime = now;
+
+    this.updateShipPhysics(deltaTime);
 
     this.renderer.render(this.scene, this.camera);
+  }
+
+  createDistantGalaxies() {
+    const textureLoader = new THREE.TextureLoader();
+
+    // Create 20 distant galaxies
+    for (let i = 0; i < 20; i++) {
+      // Random position far away from the player
+      const distance = 6000 + Math.random() * 3000;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+
+      const x = distance * Math.sin(phi) * Math.cos(theta);
+      const y = distance * Math.sin(phi) * Math.sin(theta);
+      const z = distance * Math.cos(phi);
+
+      // Create a galaxy sprite
+      const galaxySize = 200 + Math.random() * 300;
+      const galaxyMaterial = new THREE.SpriteMaterial({
+        map: this.generateGalaxyTexture(),
+        color: this.getRandomGalaxyColor(),
+        transparent: true,
+        opacity: 0.8,
+      });
+
+      const galaxy = new THREE.Sprite(galaxyMaterial);
+      galaxy.position.set(x, y, z);
+      galaxy.scale.set(galaxySize, galaxySize, 1);
+
+      // Random rotation
+      galaxy.material.rotation = Math.random() * Math.PI * 2;
+
+      this.scene.add(galaxy);
+    }
+  }
+
+  generateGalaxyTexture() {
+    // Create a canvas to draw the galaxy texture
+    const canvas = document.createElement("canvas");
+    canvas.width = 128;
+    canvas.height = 128;
+    const context = canvas.getContext("2d");
+
+    // Clear canvas
+    context.fillStyle = "rgba(0,0,0,0)";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw galaxy
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const maxRadius = canvas.width / 2;
+
+    // Choose a galaxy type (0: elliptical, 1: spiral, 2: irregular)
+    const galaxyType = Math.floor(Math.random() * 3);
+
+    if (galaxyType === 0) {
+      // Elliptical galaxy
+      const gradient = context.createRadialGradient(
+        centerX,
+        centerY,
+        0,
+        centerX,
+        centerY,
+        maxRadius
+      );
+      gradient.addColorStop(0, "rgba(255, 255, 255, 0.8)");
+      gradient.addColorStop(0.2, "rgba(255, 255, 255, 0.6)");
+      gradient.addColorStop(0.5, "rgba(255, 255, 255, 0.3)");
+      gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+      context.fillStyle = gradient;
+      context.beginPath();
+      context.arc(centerX, centerY, maxRadius, 0, Math.PI * 2);
+      context.fill();
+    } else if (galaxyType === 1) {
+      // Spiral galaxy
+      const arms = 2 + Math.floor(Math.random() * 3); // 2-4 arms
+      const armWidth = 0.2 + Math.random() * 0.3; // Width of arms
+      const tightness = 3 + Math.random() * 2; // How tight the spiral is
+
+      // Draw core
+      const coreGradient = context.createRadialGradient(
+        centerX,
+        centerY,
+        0,
+        centerX,
+        centerY,
+        maxRadius * 0.2
+      );
+      coreGradient.addColorStop(0, "rgba(255, 255, 255, 0.8)");
+      coreGradient.addColorStop(1, "rgba(255, 255, 255, 0.1)");
+
+      context.fillStyle = coreGradient;
+      context.beginPath();
+      context.arc(centerX, centerY, maxRadius * 0.2, 0, Math.PI * 2);
+      context.fill();
+
+      // Draw spiral arms
+      for (let a = 0; a < arms; a++) {
+        const angleOffset = (a / arms) * Math.PI * 2;
+
+        for (let r = 0.2; r < 1; r += 0.01) {
+          const angle = angleOffset + tightness * r;
+          const x = centerX + Math.cos(angle) * maxRadius * r;
+          const y = centerY + Math.sin(angle) * maxRadius * r;
+
+          const size = 2 + Math.random() * 3;
+          const alpha = (1 - r) * (0.1 + Math.random() * 0.2);
+
+          context.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+          context.beginPath();
+          context.arc(x, y, size, 0, Math.PI * 2);
+          context.fill();
+        }
+      }
+    } else {
+      // Irregular galaxy
+      for (let i = 0; i < 200; i++) {
+        const radius = Math.random() * maxRadius;
+        const angle = Math.random() * Math.PI * 2;
+        const x = centerX + Math.cos(angle) * radius;
+        const y = centerY + Math.sin(angle) * radius;
+
+        const size = 1 + Math.random() * 3;
+        const alpha = 0.1 + Math.random() * 0.4;
+
+        context.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        context.beginPath();
+        context.arc(x, y, size, 0, Math.PI * 2);
+        context.fill();
+      }
+    }
+
+    // Create texture from canvas
+    const texture = new THREE.CanvasTexture(canvas);
+    return texture;
+  }
+
+  getRandomGalaxyColor() {
+    // Generate random colors for galaxies
+    const colors = [
+      0xffffff, // White
+      0xffddaa, // Yellowish
+      0xaaddff, // Bluish
+      0xffaadd, // Pinkish
+      0xaaffaa, // Greenish
+    ];
+
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
+
+  setupUI() {
+    // Get UI elements
+    this.uiContainer = document.getElementById("ui-container");
+    this.warpContainer = document.getElementById("warp-container");
+    this.warpBar = document.getElementById("warp-bar");
+    this.warpPercentage = document.getElementById("warp-percentage");
+    this.warpActiveIndicator = document.getElementById("warp-active");
+
+    // Update warp bar
+    this.updateWarpUI();
+  }
+
+  updateWarpUI() {
+    // Check if UI elements exist before updating
+    if (!this.warpBar || !this.warpPercentage || !this.warpActiveIndicator)
+      return;
+
+    // Update warp energy bar
+    this.warpBar.style.width = `${this.warpEnergy}%`;
+    this.warpPercentage.textContent = `${Math.round(this.warpEnergy)}%`;
+
+    // Update bar color based on state
+    if (this.warpActive) {
+      this.warpBar.className = "";
+      this.warpActiveIndicator.style.display = "block";
+    } else if (this.warpCooldown) {
+      this.warpBar.className = "depleted";
+      this.warpActiveIndicator.style.display = "none";
+    } else if (this.warpEnergy < 100) {
+      this.warpBar.className = "charging";
+      this.warpActiveIndicator.style.display = "none";
+    } else {
+      this.warpBar.className = "";
+      this.warpActiveIndicator.style.display = "none";
+    }
+  }
+
+  toggleUI() {
+    // Check if UI elements exist before toggling
+    if (!this.uiContainer || !this.warpContainer) return;
+
+    this.uiVisible = !this.uiVisible;
+
+    if (this.uiVisible) {
+      this.uiContainer.classList.remove("hidden");
+      this.warpContainer.classList.remove("hidden");
+    } else {
+      this.uiContainer.classList.add("hidden");
+      this.warpContainer.classList.add("hidden");
+    }
   }
 }
 
