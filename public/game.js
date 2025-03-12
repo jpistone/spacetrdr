@@ -33,7 +33,7 @@ class SpaceGame {
     this.warpCooldown = false;
 
     // UI
-    this.uiVisible = true;
+    this.showUI = true;
     this.lastHKeyState = false;
 
     // Mouse control
@@ -110,6 +110,9 @@ class SpaceGame {
 
     // Setup pointer lock
     this.setupPointerLock();
+
+    // Create UI
+    this.createUI();
 
     // Start animation loop
     this.animate();
@@ -552,14 +555,18 @@ class SpaceGame {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Keyboard controls
+    // Keyboard controls for thrusters
     document.addEventListener("keydown", (event) => {
       if (event.key.toLowerCase() === "w") this.keys.w = true;
       if (event.key.toLowerCase() === "a") this.keys.a = true;
       if (event.key.toLowerCase() === "s") this.keys.s = true;
       if (event.key.toLowerCase() === "d") this.keys.d = true;
-      if (event.key === " ") this.keys.space = true;
-      if (event.key.toLowerCase() === "h") this.keys.h = true;
+
+      // Toggle UI with H key
+      if (event.key.toLowerCase() === "h") {
+        this.showUI = !this.showUI;
+        this.updateUIVisibility();
+      }
     });
 
     document.addEventListener("keyup", (event) => {
@@ -567,8 +574,6 @@ class SpaceGame {
       if (event.key.toLowerCase() === "a") this.keys.a = false;
       if (event.key.toLowerCase() === "s") this.keys.s = false;
       if (event.key.toLowerCase() === "d") this.keys.d = false;
-      if (event.key === " ") this.keys.space = false;
-      if (event.key.toLowerCase() === "h") this.keys.h = false;
     });
   }
 
@@ -968,14 +973,112 @@ class SpaceGame {
     // Check if UI elements exist before toggling
     if (!this.uiContainer || !this.warpContainer) return;
 
-    this.uiVisible = !this.uiVisible;
+    this.showUI = !this.showUI;
+    this.updateUIVisibility();
+  }
 
-    if (this.uiVisible) {
-      this.uiContainer.classList.remove("hidden");
-      this.warpContainer.classList.remove("hidden");
+  createUI() {
+    // Add space font to document
+    const fontLink = document.createElement("link");
+    fontLink.href =
+      "https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap";
+    fontLink.rel = "stylesheet";
+    document.head.appendChild(fontLink);
+
+    // Create UI container
+    this.uiContainer = document.createElement("div");
+    this.uiContainer.id = "controls-ui";
+    this.uiContainer.style.position = "absolute";
+    this.uiContainer.style.bottom = "20px";
+    this.uiContainer.style.left = "20px";
+    this.uiContainer.style.color = "#0ff";
+    this.uiContainer.style.fontFamily = "'Orbitron', sans-serif";
+    this.uiContainer.style.padding = "20px";
+    this.uiContainer.style.backgroundColor = "rgba(0, 20, 40, 0.7)";
+    this.uiContainer.style.borderRadius = "5px";
+    this.uiContainer.style.zIndex = "100";
+    this.uiContainer.style.boxShadow = "0 0 15px rgba(0, 255, 255, 0.5)";
+    this.uiContainer.style.border = "1px solid #0ff";
+
+    // Controls section
+    const controlsTitle = document.createElement("h3");
+    controlsTitle.textContent = "NAVIGATION CONTROLS";
+    controlsTitle.style.margin = "0 0 15px 0";
+    controlsTitle.style.textAlign = "center";
+    controlsTitle.style.letterSpacing = "2px";
+    controlsTitle.style.color = "#0ff";
+    controlsTitle.style.textShadow = "0 0 5px #0ff";
+    this.uiContainer.appendChild(controlsTitle);
+
+    // Divider
+    const divider = document.createElement("div");
+    divider.style.height = "2px";
+    divider.style.background =
+      "linear-gradient(to right, transparent, #0ff, transparent)";
+    divider.style.margin = "0 0 15px 0";
+    this.uiContainer.appendChild(divider);
+
+    const controlsList = document.createElement("ul");
+    controlsList.style.padding = "0";
+    controlsList.style.margin = "0";
+    controlsList.style.listStyleType = "none";
+
+    const controls = [
+      { key: "W", action: "Forward thrust" },
+      { key: "S", action: "Backward thrust" },
+      { key: "A", action: "Left thrust" },
+      { key: "D", action: "Right thrust" },
+      { key: "MOUSE", action: "Steer ship" },
+      { key: "H", action: "Toggle HUD" },
+      { key: "CLICK", action: "Lock/unlock controls" },
+    ];
+
+    controls.forEach((control) => {
+      const item = document.createElement("li");
+      item.style.margin = "10px 0";
+      item.style.display = "flex";
+      item.style.alignItems = "center";
+
+      const keySpan = document.createElement("span");
+      keySpan.textContent = control.key;
+      keySpan.style.display = "inline-block";
+      keySpan.style.width = "80px";
+      keySpan.style.backgroundColor = "rgba(0, 100, 150, 0.5)";
+      keySpan.style.padding = "5px 10px";
+      keySpan.style.borderRadius = "3px";
+      keySpan.style.marginRight = "10px";
+      keySpan.style.textAlign = "center";
+      keySpan.style.fontWeight = "bold";
+      keySpan.style.border = "1px solid #0aa";
+
+      const actionSpan = document.createElement("span");
+      actionSpan.textContent = control.action;
+      actionSpan.style.color = "#8ff";
+
+      item.appendChild(keySpan);
+      item.appendChild(actionSpan);
+      controlsList.appendChild(item);
+    });
+
+    this.uiContainer.appendChild(controlsList);
+
+    // Footer
+    const footer = document.createElement("div");
+    footer.textContent = "PRESS H TO TOGGLE DISPLAY";
+    footer.style.marginTop = "15px";
+    footer.style.fontSize = "10px";
+    footer.style.textAlign = "center";
+    footer.style.color = "#0aa";
+    this.uiContainer.appendChild(footer);
+
+    document.body.appendChild(this.uiContainer);
+  }
+
+  updateUIVisibility() {
+    if (this.showUI) {
+      this.uiContainer.style.display = "block";
     } else {
-      this.uiContainer.classList.add("hidden");
-      this.warpContainer.classList.add("hidden");
+      this.uiContainer.style.display = "none";
     }
   }
 }
