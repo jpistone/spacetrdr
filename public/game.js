@@ -24,12 +24,16 @@ class SpaceGame {
 
     // Warp speed system
     this.warpActive = false;
-    this.warpSpeedMultiplier = 100000; // 100x larger (was 1000)
+    this.warpSpeedMultiplier = 1000; // Set to exactly 1000x
     this.maxStamina = 100;
     this.currentStamina = 100;
     this.staminaRegenRate = 5; // Per second
     this.staminaUseRate = 20; // Per second
     this.lastStaminaUpdate = 0;
+
+    // Add warp visual effects
+    this.warpEffect = null;
+    this.normalMaxSpeed = 200; // Store the normal max speed
 
     // UI
     this.showUI = true;
@@ -689,6 +693,20 @@ class SpaceGame {
     // Position camera behind the ship
     this.camera.position.set(0, 0.5, 3);
     this.pitchObject.add(this.camera);
+
+    // Create warp speed visual effect (initially invisible)
+    const warpGeometry = new THREE.CylinderGeometry(0.5, 3, 20, 16, 1, true);
+    const warpMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+    });
+    this.warpEffect = new THREE.Mesh(warpGeometry, warpMaterial);
+    this.warpEffect.rotation.x = Math.PI / 2; // Align with ship
+    this.warpEffect.position.z = -10; // Position behind the ship
+    this.pitchObject.add(this.warpEffect);
   }
 
   setupPointerLock() {
@@ -873,6 +891,9 @@ class SpaceGame {
     const deltaTime = (now - this.lastStaminaUpdate) / 1000; // Convert to seconds
     this.lastStaminaUpdate = now;
 
+    // Previous warp state for transition effects
+    const wasWarping = this.warpActive;
+
     // Check if warp is active
     this.warpActive = this.keys.shift && this.currentStamina > 0;
 
@@ -887,7 +908,19 @@ class SpaceGame {
       // Update UI
       if (this.staminaBar) {
         this.staminaBar.style.width = `${this.currentStamina}%`;
-        this.staminaBar.style.backgroundColor = "rgba(255, 165, 0, 0.7)"; // Orange when active
+        this.staminaBar.style.backgroundColor = "rgba(0, 255, 255, 0.7)"; // Cyan when active
+      }
+
+      // Set max speed to warp speed
+      this.maxSpeed = this.normalMaxSpeed * this.warpSpeedMultiplier;
+
+      // Show warp effect
+      if (this.warpEffect) {
+        // Fade in effect if just starting warp
+        if (!wasWarping) {
+          this.fadeInWarpEffect();
+        }
+        this.warpEffect.material.opacity = 0.7;
       }
     } else {
       // Regenerate stamina when not warping
@@ -899,7 +932,21 @@ class SpaceGame {
       // Update UI
       if (this.staminaBar) {
         this.staminaBar.style.width = `${this.currentStamina}%`;
-        this.staminaBar.style.backgroundColor = "rgba(0, 255, 0, 0.7)"; // Green when recharging
+
+        // Change color based on stamina level
+        if (this.currentStamina < 30) {
+          this.staminaBar.style.backgroundColor = "rgba(255, 0, 0, 0.7)"; // Red when low
+        } else {
+          this.staminaBar.style.backgroundColor = "rgba(0, 255, 0, 0.7)"; // Green when recharging
+        }
+      }
+
+      // Reset max speed to normal
+      this.maxSpeed = this.normalMaxSpeed;
+
+      // Hide warp effect
+      if (this.warpEffect && wasWarping) {
+        this.fadeOutWarpEffect();
       }
     }
 
@@ -933,12 +980,16 @@ class SpaceGame {
     this.velocity.multiplyScalar(this.drag);
 
     // Limit maximum speed
-    if (this.velocity.length() > this.maxSpeed) {
+    const currentSpeed = this.velocity.length();
+    if (currentSpeed > this.maxSpeed) {
       this.velocity.normalize().multiplyScalar(this.maxSpeed);
     }
 
     // Update position based on velocity
     this.shipContainer.position.add(this.velocity);
+
+    // Update speed display in UI
+    this.updateSpeedDisplay(currentSpeed);
 
     // Get the combined quaternion of the ship for sending to server
     const combinedQuaternion = new THREE.Quaternion();
@@ -1007,7 +1058,7 @@ class SpaceGame {
       "A - Left thrust",
       "D - Right thrust",
       "Mouse - Steer ship",
-      "Shift - Warp speed (uses stamina)",
+      "Shift - Warp speed (1000x, uses stamina)",
       "H - Toggle UI visibility",
       "Click - Lock/unlock mouse",
     ];
@@ -1026,7 +1077,7 @@ class SpaceGame {
     staminaContainer.style.marginTop = "15px";
 
     const staminaLabel = document.createElement("div");
-    staminaLabel.textContent = "Warp Stamina";
+    staminaLabel.textContent = "Warp Drive Energy";
     staminaLabel.style.marginBottom = "5px";
     staminaContainer.appendChild(staminaLabel);
 
@@ -1041,21 +1092,97 @@ class SpaceGame {
     this.staminaBar.style.width = "100%";
     this.staminaBar.style.height = "100%";
     this.staminaBar.style.backgroundColor = "rgba(0, 255, 0, 0.7)";
+    this.staminaBar.style.transition = "width 0.2s, background-color 0.3s";
     this.staminaBar.style.borderRadius = "3px";
-    this.staminaBar.style.overflow = "hidden";
 
+    staminaBarContainer.appendChild(this.staminaBar);
     staminaContainer.appendChild(staminaBarContainer);
-    staminaContainer.appendChild(this.staminaBar);
 
     this.uiContainer.appendChild(staminaContainer);
+
+    // Add to document
+    document.body.appendChild(this.uiContainer);
   }
 
   updateUIVisibility() {
     if (this.showUI) {
-      document.body.appendChild(this.uiContainer);
+      this.uiContainer.style.display = "block";
+      if (this.speedDisplay) this.speedDisplay.style.display = "block";
     } else {
-      document.body.removeChild(this.uiContainer);
+      this.uiContainer.style.display = "none";
+      if (this.speedDisplay) this.speedDisplay.style.display = "none";
     }
+  }
+
+  // Add these new methods for warp effects
+
+  fadeInWarpEffect() {
+    if (!this.warpEffect) return;
+
+    // Reset opacity
+    this.warpEffect.material.opacity = 0;
+
+    // Animate opacity
+    const fadeIn = () => {
+      if (this.warpEffect.material.opacity < 0.7) {
+        this.warpEffect.material.opacity += 0.05;
+        requestAnimationFrame(fadeIn);
+      }
+    };
+
+    fadeIn();
+  }
+
+  fadeOutWarpEffect() {
+    if (!this.warpEffect) return;
+
+    // Animate opacity
+    const fadeOut = () => {
+      if (this.warpEffect.material.opacity > 0) {
+        this.warpEffect.material.opacity -= 0.05;
+        requestAnimationFrame(fadeOut);
+      }
+    };
+
+    fadeOut();
+  }
+
+  updateSpeedDisplay(currentSpeed) {
+    // Create speed display if it doesn't exist
+    if (!this.speedDisplay) {
+      this.speedDisplay = document.createElement("div");
+      this.speedDisplay.style.position = "absolute";
+      this.speedDisplay.style.top = "20px";
+      this.speedDisplay.style.right = "20px";
+      this.speedDisplay.style.color = "white";
+      this.speedDisplay.style.fontFamily = "Arial, sans-serif";
+      this.speedDisplay.style.padding = "10px";
+      this.speedDisplay.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+      this.speedDisplay.style.borderRadius = "5px";
+      this.speedDisplay.style.zIndex = "100";
+      document.body.appendChild(this.speedDisplay);
+    }
+
+    // Format speed with commas for large numbers
+    const formattedSpeed = Math.round(currentSpeed).toLocaleString();
+
+    // Update display
+    this.speedDisplay.innerHTML = `
+      <div style="font-size: 14px;">CURRENT SPEED</div>
+      <div style="font-size: 24px; font-weight: bold; color: ${
+        this.warpActive ? "#00ffff" : "white"
+      };">
+        ${formattedSpeed} u/s
+      </div>
+      <div style="font-size: 12px; color: ${
+        this.warpActive ? "#00ffff" : "#aaaaaa"
+      };">
+        ${this.warpActive ? "WARP DRIVE ACTIVE" : "NORMAL DRIVE"}
+      </div>
+    `;
+
+    // Update visibility
+    this.speedDisplay.style.display = this.showUI ? "block" : "none";
   }
 }
 
