@@ -1,0 +1,26 @@
+{
+    "name": "space-game",
+    "version": "1.0.0",
+    "description": "Multiplayer browser-based open world space game",
+    "main": "server/server.js",
+    "scripts": {
+        "start": "node server/server.js",
+        "dev": "nodemon server/server.js"
+    },
+    "keywords": [
+        "space",
+        "game",
+        "threejs",
+        "multiplayer"
+    ],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "express": "^4.18.2",
+        "socket.io": "^4.7.2",
+        "three": "^0.160.0"
+    },
+    "devDependencies": {
+        "nodemon": "^3.1.9"
+    }
+}
